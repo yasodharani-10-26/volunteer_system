@@ -1,0 +1,191 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // --- REUSABLE SECURITY PRIMITIVES ---
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isEmailVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    // Role Lookup
+    function isAdmin() {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid)) ||
+        request.auth.token.email == "yashodarani2022014@gmail.com"
+      );
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // --- ENTITY SCHEMA VALIDATIONS (Anti-Update-Gap) ---
+    
+    function isValidUser(data) {
+      return data.displayName is string && data.displayName.size() <= 100 &&
+             data.photoURL is string && data.photoURL.size() <= 500 &&
+             data.skills is list && data.skills.size() <= 50 &&
+             data.interests is list && data.interests.size() <= 50 &&
+             data.role is string && (data.role == "volunteer" || data.role == "admin");
+    }
+
+    function isValidUserPrivate(data) {
+      return data.email is string && data.email.size() <= 100 &&
+             data.phone is string && data.phone.size() <= 30 &&
+             data.emergencyContactName is string && data.emergencyContactName.size() <= 100 &&
+             data.emergencyContactPhone is string && data.emergencyContactPhone.size() <= 30;
+    }
+
+    function isValidEvent(data) {
+      return data.title is string && data.title.size() <= 100 &&
+             data.description is string && data.description.size() <= 1000 &&
+             data.date is string && data.date.size() <= 100 &&
+             data.location is string && data.location.size() <= 200 &&
+             data.requiredSkills is list && data.requiredSkills.size() <= 20 &&
+             data.maxVolunteers is int && data.maxVolunteers > 0 &&
+             data.registeredCount is int && data.registeredCount >= 0 &&
+             data.status is string && (data.status == "open" || data.status == "completed") &&
+             data.createdBy is string && data.createdBy.size() <= 128;
+    }
+
+    function isValidRegistration(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.eventId is string && data.eventId.size() <= 128 &&
+             data.userName is string && data.userName.size() <= 100 &&
+             data.eventTitle is string && data.eventTitle.size() <= 150 &&
+             data.eventDate is string && data.eventDate.size() <= 100 &&
+             data.status is string && (data.status == "registered" || data.status == "attended" || data.status == "cancelled");
+    }
+
+    function isValidHoursLog(data) {
+      return data.userId is string && data.userId.size() <= 128 &&
+             data.userName is string && data.userName.size() <= 100 &&
+             data.eventId is string && data.eventId.size() <= 128 &&
+             data.eventTitle is string && data.eventTitle.size() <= 150 &&
+             data.hours is number && data.hours > 0.0 && data.hours <= 24.0 &&
+             data.description is string && data.description.size() <= 500 &&
+             data.status is string && (data.status == "pending" || data.status == "approved" || data.status == "rejected");
+    }
+
+    // --- ROUTE & COLLECTION POLICIES ---
+
+    // 1. Volunteer Public Profiles Collection
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create: if isEmailVerified() && isOwner(userId) && isValidUser(incoming()) && 
+                    incoming().keys().hasAll(['displayName', 'photoURL', 'skills', 'interests', 'joinedAt', 'role']) &&
+                    incoming().keys().size() == 6 &&
+                    incoming().role == "volunteer" &&
+                    incoming().joinedAt is string;
+      allow update: if isEmailVerified() && isOwner(userId) && isValidUser(incoming()) && (
+        // Protect role escalations unless admin did it
+        (incoming().role == existing().role && incoming().joinedAt == existing().joinedAt &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['displayName', 'photoURL', 'skills', 'interests'])) ||
+        isAdmin()
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 2. Private Volunteer Data Isolation (PII)
+    match /users_private/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isEmailVerified() && isOwner(userId) && isValidUserPrivate(incoming()) &&
+                    incoming().keys().hasAll(['email', 'phone', 'emergencyContactName', 'emergencyContactPhone', 'updatedAt']) &&
+                    incoming().keys().size() == 5 &&
+                    incoming().updatedAt == request.time;
+      allow update: if isEmailVerified() && isOwner(userId) && isValidUserPrivate(incoming()) &&
+                    incoming().updatedAt == request.time &&
+                    incoming().diff(existing()).affectedKeys().hasOnly(['phone', 'emergencyContactName', 'emergencyContactPhone', 'updatedAt']);
+      allow delete: if isAdmin();
+    }
+
+    // 3. Events Collection
+    match /events/{eventId} {
+      allow read: if true;
+      allow create: if isAdmin() && isValidEvent(incoming()) && 
+                    incoming().keys().hasAll(['title', 'description', 'date', 'location', 'requiredSkills', 'maxVolunteers', 'registeredCount', 'status', 'createdAt', 'createdBy']) &&
+                    incoming().keys().size() == 10 &&
+                    incoming().createdAt == request.time &&
+                    incoming().createdBy == request.auth.uid;
+      allow update: if isEmailVerified() && (
+        (isAdmin() && isValidEvent(incoming()) && incoming().createdAt == existing().createdAt) ||
+        // Multi-tier: Volunteers can increment or decrement registeredCount securely when joining/leaving
+        (isValidEvent(incoming()) && 
+         incoming().diff(existing()).affectedKeys().hasOnly(['registeredCount']) &&
+         (incoming().registeredCount == existing().registeredCount + 1 || incoming().registeredCount == existing().registeredCount - 1))
+      );
+      allow delete: if isAdmin();
+    }
+
+    // 4. Registrations Collection
+    match /registrations/{registrationId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidRegistration(incoming()) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().keys().hasAll(['userId', 'eventId', 'userName', 'eventTitle', 'eventDate', 'status', 'registeredAt']) &&
+                    incoming().keys().size() == 7 &&
+                    incoming().registeredAt == request.time &&
+                    exists(/databases/$(database)/documents/events/$(incoming().eventId));
+      allow update: if isEmailVerified() && (
+        (resource.data.userId == request.auth.uid && incoming().status == "cancelled" && incoming().diff(existing()).affectedKeys().hasOnly(['status'])) ||
+        (isAdmin() && isValidRegistration(incoming()) && (incoming().status == "attended" || incoming().status == "cancelled" || incoming().status == "registered"))
+      );
+    }
+
+    // 5. Hours Log Collection
+    match /hours_log/{logId} {
+      allow read: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow list: if isSignedIn() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isEmailVerified() && isValidHoursLog(incoming()) &&
+                    incoming().userId == request.auth.uid &&
+                    incoming().status == "pending" &&
+                    incoming().keys().hasAll(['userId', 'userName', 'eventId', 'eventTitle', 'hours', 'description', 'status', 'loggedAt']) &&
+                    incoming().keys().size() == 8 &&
+                    incoming().loggedAt == request.time &&
+                    exists(/databases/$(database)/documents/events/$(incoming().eventId));
+      allow update: if isEmailVerified() && (
+        // Volunteer edits their pending log
+        (resource.data.userId == request.auth.uid && existing().status == "pending" && isValidHoursLog(incoming()) &&
+         incoming().diff(existing()).affectedKeys().hasOnly(['hours', 'description'])) ||
+        // Admin approves or rejects hours log
+        (isAdmin() && incoming().diff(existing()).affectedKeys().hasOnly(['status', 'approvedBy']) &&
+         (incoming().status == "approved" || incoming().status == "rejected") &&
+         incoming().approvedBy == request.auth.uid)
+      );
+      allow delete: if isAdmin() || (resource.data.userId == request.auth.uid && existing().status == "pending");
+    }
+
+    // 6. Admins Directory Control (Email bootstrapping verified)
+    match /admins/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isSignedIn() && (
+        request.auth.uid == userId && (
+          request.auth.token.email == "yashodarani2022014@gmail.com" ||
+          request.auth.token.email == "admin@volunteersystem.com" // alternate test admin
+        )
+      ) || isAdmin();
+      allow delete: if isAdmin();
+    }
+  }
+}

@@ -1,0 +1,117 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Public Profile",
+      "description": "Public profile details of a volunteer or admin",
+      "type": "object",
+      "properties": {
+        "displayName": { "type": "string" },
+        "photoURL": { "type": "string" },
+        "skills": { "type": "array" },
+        "interests": { "type": "array" },
+        "joinedAt": { "type": "string" },
+        "role": { "type": "string" }
+      },
+      "required": ["displayName", "photoURL", "skills", "interests", "joinedAt", "role"]
+    },
+    "UserPrivate": {
+      "title": "User Private Profile",
+      "description": "Isolated PII for volunteers",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "phone": { "type": "string" },
+        "emergencyContactName": { "type": "string" },
+        "emergencyContactPhone": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      },
+      "required": ["email", "phone", "emergencyContactName", "emergencyContactPhone", "updatedAt"]
+    },
+    "Event": {
+      "title": "Volunteer Event",
+      "description": "An opportunity for volunteering",
+      "type": "object",
+      "properties": {
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "date": { "type": "string" },
+        "location": { "type": "string" },
+        "requiredSkills": { "type": "array" },
+        "maxVolunteers": { "type": "number" },
+        "registeredCount": { "type": "number" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["title", "description", "date", "location", "requiredSkills", "maxVolunteers", "registeredCount", "status", "createdAt", "createdBy"]
+    },
+    "Registration": {
+      "title": "Event Registration",
+      "description": "A volunteer's sign-up for an event",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "eventId": { "type": "string" },
+        "userName": { "type": "string" },
+        "eventTitle": { "type": "string" },
+        "eventDate": { "type": "string" },
+        "status": { "type": "string" },
+        "registeredAt": { "type": "string" }
+      },
+      "required": ["userId", "eventId", "userName", "eventTitle", "eventDate", "status", "registeredAt"]
+    },
+    "HoursLog": {
+      "title": "Hours Log",
+      "description": "Logged work hours by a volunteer",
+      "type": "object",
+      "properties": {
+        "userId": { "type": "string" },
+        "userName": { "type": "string" },
+        "eventId": { "type": "string" },
+        "eventTitle": { "type": "string" },
+        "hours": { "type": "number" },
+        "description": { "type": "string" },
+        "status": { "type": "string" },
+        "loggedAt": { "type": "string" },
+        "approvedBy": { "type": "string" }
+      },
+      "required": ["userId", "userName", "eventId", "eventTitle", "hours", "description", "status", "loggedAt"]
+    },
+    "AdminDoc": {
+      "title": "Admin Document",
+      "description": "Authenticates admin role inside security rules",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string" },
+        "assignedAt": { "type": "string" }
+      },
+      "required": ["email", "assignedAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "Store volunteer public profiles"
+    },
+    "/users_private/{userId}": {
+      "schema": "UserPrivate",
+      "description": "Store private volunteer PII"
+    },
+    "/events/{eventId}": {
+      "schema": "Event",
+      "description": "Store all opportunities"
+    },
+    "/registrations/{registrationId}": {
+      "schema": "Registration",
+      "description": "Store signups for events"
+    },
+    "/hours_log/{logId}": {
+      "schema": "HoursLog",
+      "description": "Logs of hours worked"
+    },
+    "/admins/{userId}": {
+      "schema": "AdminDoc",
+      "description": "Admins list"
+    }
+  }
+}

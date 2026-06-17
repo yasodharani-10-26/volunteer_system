@@ -1,0 +1,6 @@
+{
+  "name": "Volunteer Registration System",
+  "description": "A secure, zero-trust volunteer hub for managing events, tracking completed impact hours, parsing custom profile preferences, and reviewing real-time analytics.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
