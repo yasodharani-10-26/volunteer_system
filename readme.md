@@ -6,6 +6,11 @@
 <h3>ch.yashodarani</h3>
 <h4>d.pavani</h4>
 <p><b>this is a volunteer system project which is used for volunteers to complete their work in online and simple and keep reports of their work</b></p>
+<b>purpose:</b>
+<p>.collect volunteer details online</p>
+<p>.manage registrations effieciently</p>
+<p>.give reports based on registrations</p>
+<p>government schemes availabaility for eligibilty persons</p>
 # Run and deploy your AI Studio app
 
 This contains everything you need to run your app locally.
